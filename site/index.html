@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mediascrape</title>
+  <meta name="description" content="Download a YouTube video by pasting its link.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e5484d'/><path d='M13 10v12l10-6z' fill='white'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>mediascrape</h1>
+      <p class="lede">Paste a YouTube link and get the video file.</p>
+    </header>
+
+    <form id="form" autocomplete="off">
+      <label for="url">Video link</label>
+      <input id="url" name="url" type="url" inputmode="url" required
+             placeholder="https://www.youtube.com/watch?v=…">
+
+      <div class="row">
+        <div class="field">
+          <label for="quality">Quality</label>
+          <select id="quality" name="quality">
+            <option value="1080">Video, up to 1080p (MP4)</option>
+            <option value="720">Video, up to 720p (MP4)</option>
+            <option value="480">Video, up to 480p (MP4)</option>
+            <option value="audio">Audio only (M4A)</option>
+          </select>
+        </div>
+        <div class="field" id="code-field" hidden>
+          <label for="code">Access code</label>
+          <input id="code" name="code" type="password" autocomplete="current-password">
+        </div>
+      </div>
+
+      <button id="submit" type="submit">Download</button>
+    </form>
+
+    <section id="status" aria-live="polite" hidden>
+      <p id="status-text"></p>
+      <div class="bar" id="bar" hidden><div id="bar-fill"></div></div>
+      <a id="result" class="result" hidden></a>
+    </section>
+
+    <footer>
+      Files are deleted after 24 hours. Only download videos you have the right to keep.
+    </footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>
