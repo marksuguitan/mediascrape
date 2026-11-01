@@ -1,0 +1,90 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Weekly rebuild so the Lambda picks up the latest yt-dlp (YouTube changes often).
+  schedule:
+    - cron: "17 9 * * 1"
+
+permissions:
+  id-token: write # GitHub OIDC -> AWS role, no stored AWS keys
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  STACK: mediascrape-app
+  ECR_REPO: mediascrape
+
+jobs:
+  deploy:
+    # Skips quietly until scripts/bootstrap.sh has been run and AWS_ROLE_ARN is set.
+    if: vars.AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: |
+          pip install -r backend/requirements-dev.txt
+          python -m pytest -q backend/tests
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push the Lambda image
+        id: image
+        run: |
+          uri="${{ steps.ecr.outputs.registry }}/${ECR_REPO}:${GITHUB_SHA::12}-${GITHUB_RUN_ID}"
+          docker build -t "$uri" backend
+          docker push "$uri"
+          echo "uri=$uri" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the CloudFormation stack
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME || 'mediascrape.hypersynaptic.com' }}
+          CERTIFICATE_ARN: ${{ vars.CERTIFICATE_ARN }}
+          HOSTED_ZONE_ID: ${{ vars.HOSTED_ZONE_ID }}
+          ACCESS_CODE: ${{ secrets.ACCESS_CODE }}
+          YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}
+        run: |
+          aws cloudformation deploy \
+            --stack-name "$STACK" \
+            --template-file infra/app.yml \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ImageUri=$IMAGE_URI" \
+              "DomainName=$DOMAIN_NAME" \
+              "CertificateArn=$CERTIFICATE_ARN" \
+              "HostedZoneId=$HOSTED_ZONE_ID" \
+              "AccessCode=$ACCESS_CODE" \
+              "YtdlpProxy=$YTDLP_PROXY"
+
+      - name: Upload the site
+        run: |
+          out() {
+            aws cloudformation describe-stacks --stack-name "$STACK" \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
+          }
+          bucket=$(out SiteBucket)
+          dist=$(out DistributionId)
+          aws s3 sync site/ "s3://$bucket" --delete --cache-control "public, max-age=300"
+          aws cloudfront create-invalidation --distribution-id "$dist" --paths "/*" >/dev/null
+          echo "### Deployed to $(out SiteUrl)" >> "$GITHUB_STEP_SUMMARY"
+          echo "CloudFront domain: \`$(out DistributionDomain)\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,4 @@
+# yt-dlp is deliberately unpinned: YouTube changes often and every deploy
+# (plus the weekly scheduled one) should pick up the newest release.
+# The [default] extra brings yt-dlp-ejs, which YouTube now needs together with Deno.
+yt-dlp[default]
